@@ -24,7 +24,7 @@ const ProjectFileSchema = new Schema<IProjectFile>(
     path: { type: String, required: true },
     name: { type: String, required: true },
     directory: { type: String, required: true },
-    extension: { type: String, required: true },
+    extension: { type: String, default: '' },
     language: { type: String, required: true },
     size: { type: Number, required: true },
     hash: { type: String, required: true },
