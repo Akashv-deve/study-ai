@@ -29,7 +29,9 @@ npm-debug.log*
 tmp/
 temp/
 uploads/
-projects/
+# Anchored to the repo root: an unanchored `projects/` also matched the
+# Next.js route folder frontend/src/app/workspace/projects/ and kept it out of git.
+/projects/
 
 # Coverage
 coverage/
