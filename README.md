@@ -51,7 +51,8 @@ graph TB
 - **Project Workspaces**: Upload project `.zip` archives. GitHub repository import is intentionally reserved for a later phase.
 - **Async Project Scanner**: Non-blocking background extraction and indexing. Automatically ignores `node_modules`, `.git`, `dist`, `.next`, `venv`, and 40+ build artifact directories.
 - **IDE Code Explorer**: High-performance CodeMirror 6 viewer with file tree navigation and code selection.
-- **Server-Side Gemini AI**: Streaming AI explanations, selection breakdowns, and architecture overviews using Google Gemini (`gemini-2.5-flash`).
+- **Server-Side Gemini AI**: Streaming AI explanations, selection breakdowns, and persisted architecture overviews using Google Gemini (`gemini-3.6-flash`, configurable through `GEMINI_MODEL`).
+- **Durable favourites**: Saved response snapshots remain readable after their ordinary generation or source project is removed.
 - **Contextual Chat**: Persisted follow-up discussion linked to its AI generation, project, and user.
 - **MongoDB Atlas Persistence**: Durable storage for projects, files, processing jobs, conversations, AI generations, notes, and activity events.
 - **Better Auth Integration**: MongoDB-backed GitHub OAuth sessions with same-origin cookie handling via Next.js reverse proxy rewrites.
@@ -83,6 +84,7 @@ MONGODB_URI=mongodb://localhost:27017/studyai
 BETTER_AUTH_SECRET=your_32_character_secret_here
 BETTER_AUTH_URL=http://localhost:3000
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.6-flash
 ```
 
 Start the backend dev server:
@@ -126,6 +128,8 @@ Frontend runs on `http://localhost:3000`. Next.js rewrites automatically proxy `
 1. Import repository on [Vercel](https://vercel.com/).
 2. Framework Preset: Next.js; set Root Directory to `frontend`.
 3. Set `RENDER_BACKEND_URL` to your Render backend domain (e.g. `https://study-ai-api.onrender.com`). It is required for production builds. On Render, set both `FRONTEND_URL` and `BETTER_AUTH_URL` to the public Vercel origin so GitHub callbacks flow through `https://your-app.vercel.app/api/auth/*`.
+
+For Better Auth IP-aware rate limiting, set `BETTER_AUTH_TRUSTED_PROXIES` on Render to the exact proxy IP/CIDR entries supplied by the deployment path. The service keeps `trust proxy` at one hop and does not accept arbitrary forwarded IP addresses.
 
 ---
 

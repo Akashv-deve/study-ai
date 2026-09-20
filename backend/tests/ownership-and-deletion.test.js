@@ -7,6 +7,7 @@ const { AIGeneration } = require('../dist/models/aiGeneration.model');
 const { Conversation } = require('../dist/models/conversation.model');
 const { Message } = require('../dist/models/message.model');
 const { ActivityEvent } = require('../dist/models/activityEvent.model');
+const { FavoriteResponse } = require('../dist/models/favoriteResponse.model');
 const { ProjectRepository } = require('../dist/repositories/project.repository');
 
 describe('ownership and deletion guards', () => {
@@ -25,9 +26,10 @@ describe('ownership and deletion guards', () => {
     const updateMany = jest.spyOn(ProcessingJob, 'updateMany').mockResolvedValue({});
     jest.spyOn(ProcessingJob, 'deleteMany').mockResolvedValue({});
     jest.spyOn(Conversation, 'find').mockReturnValue({ select: () => ({ lean: async () => [] }) });
-    for (const model of [ProjectFile, FileContent, AIGeneration, Conversation, Message, ActivityEvent]) {
+    for (const model of [ProjectFile, FileContent, AIGeneration, Conversation, Message, ActivityEvent, FavoriteResponse]) {
       jest.spyOn(model, 'deleteMany').mockResolvedValue({});
     }
+    jest.spyOn(FavoriteResponse, 'updateMany').mockResolvedValue({});
     jest.spyOn(Project, 'deleteOne').mockResolvedValue({ deletedCount: 1 });
     const repository = new ProjectRepository();
     await repository.delete(projectId, 'user-a');

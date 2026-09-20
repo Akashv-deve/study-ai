@@ -1,57 +1,16 @@
 'use client';
 import React, { useState } from 'react';
-import { Sparkles, Copy, Check } from 'lucide-react';
+import { Check, Copy, Expand, Heart, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
 import { ContextualChat } from './ContextualChat';
+import { MarkdownResponse } from './MarkdownResponse';
 import { Button } from '../ui/Button';
 
-interface AIPanelProps {
-  onGenerate: (prompt: string) => void;
-  streamOutput: string;
-  isStreaming: boolean;
-}
-
-export const AIPanel: React.FC<AIPanelProps> = ({ onGenerate, streamOutput, isStreaming }) => {
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(streamOutput);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="h-full flex flex-col bg-[#0d1117] border-l border-[#30363d] p-4 font-sans select-none overflow-y-auto">
-      <div className="flex items-center justify-between pb-3 border-b border-[#30363d]">
-        <div className="flex items-center space-x-2">
-          <Sparkles size={16} className="text-blue-400" />
-          <h3 className="font-semibold text-sm text-white">Study AI Assistant</h3>
-        </div>
-      </div>
-
-      <div className="flex-1 my-4 space-y-4">
-        {streamOutput ? (
-          <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-4 font-mono text-xs whitespace-pre-wrap text-zinc-200 leading-relaxed relative">
-            <div className="flex justify-end mb-2">
-              <Button size="sm" variant="ghost" onClick={handleCopy}>
-                {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
-              </Button>
-            </div>
-            {streamOutput}
-          </div>
-        ) : (
-          <div className="text-center py-12 text-zinc-500 text-xs">
-            Ask a question or select code to generate explanations, traces, or code updates.
-          </div>
-        )}
-
-        {streamOutput && (
-          <ContextualChat
-            isLoading={isStreaming}
-            onSend={(msg) => onGenerate(msg)}
-          />
-        )}
-      </div>
-    </div>
-  );
+interface AIPanelProps { onGenerate: (prompt: string) => void; streamOutput: string; isStreaming: boolean; incomplete?: boolean; context?: { filePath?: string; selection?: { startLine?: number; endLine?: number }; type?: string; modelName?: string; createdAt?: string }; generationId?: string; isFavorite?: boolean; onRegenerate?: () => void; onRetry?: () => void; onDelete?: () => void; onFavorite?: () => void; }
+export const AIPanel: React.FC<AIPanelProps> = ({ onGenerate, streamOutput, isStreaming, incomplete, context, generationId, isFavorite, onRegenerate, onRetry, onDelete, onFavorite }) => {
+  const [copied, setCopied] = useState(false); const [full, setFull] = useState(false);
+  const copy = async () => { await navigator.clipboard.writeText(streamOutput); setCopied(true); window.setTimeout(() => setCopied(false), 2000); };
+  return <div className={`${full ? 'fixed inset-0 z-50' : 'h-full'} flex flex-col bg-[#0d1117] border-l border-[#30363d] p-4 font-sans overflow-y-auto`}>
+    <div className="flex items-center justify-between pb-3 border-b border-[#30363d]"><div className="flex items-center gap-2"><Sparkles size={16} className="text-blue-400" /><h3 className="font-semibold text-sm text-white">Study AI Assistant</h3></div><Button size="sm" variant="ghost" title="Full screen" onClick={() => setFull(!full)}>{full ? <X size={14} /> : <Expand size={14} />}</Button></div>
+    <div className="flex-1 my-4 space-y-4">{streamOutput ? <div className="bg-[#161b22] border border-[#30363d] rounded-lg p-4 relative">{incomplete && <div role="alert" className="mb-3 flex items-center justify-between gap-2 rounded border border-yellow-800 bg-yellow-950/40 px-2 py-1 text-[11px] text-yellow-200"><span>Response incomplete. Retry to generate it again.</span><Button size="sm" variant="ghost" disabled={isStreaming} onClick={onRetry}>Retry</Button></div>}{context && <p className="mb-2 text-[10px] text-zinc-500">{context.filePath ? `File: ${context.filePath}` : 'Project context'}{context.selection?.startLine ? ` · Lines ${context.selection.startLine}–${context.selection.endLine ?? context.selection.startLine}` : ''}{context.type ? ` · ${context.type.replaceAll('_', ' ')}` : ''}{context.modelName ? ` · ${context.modelName}` : ''}{context.createdAt ? ` · ${new Date(context.createdAt).toLocaleString()}` : ''}</p>}<div className="flex justify-end gap-1 mb-2"><Button size="sm" variant="ghost" title="Copy response" aria-label="Copy response" onClick={copy}>{copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}</Button>{generationId && <><Button size="sm" variant="ghost" title="Regenerate" aria-label="Regenerate response" disabled={isStreaming} onClick={onRegenerate}><RefreshCw size={12} /></Button><Button size="sm" variant="ghost" title={isFavorite ? 'Remove favourite' : 'Save favourite'} aria-label={isFavorite ? 'Remove favourite' : 'Save favourite'} disabled={isStreaming} onClick={onFavorite}><Heart size={12} className={isFavorite ? 'fill-red-400 text-red-400' : ''} /></Button><Button size="sm" variant="ghost" title="Delete response" aria-label="Delete response" disabled={isStreaming} onClick={onDelete}><Trash2 size={12} /></Button></>}</div><MarkdownResponse content={streamOutput} /></div> : <div className="text-center py-12 text-zinc-500 text-xs">Ask a question or select code to generate explanations, traces, or code updates.</div>}{streamOutput && <ContextualChat isLoading={isStreaming} onSend={onGenerate} />}</div>
+  </div>;
 };

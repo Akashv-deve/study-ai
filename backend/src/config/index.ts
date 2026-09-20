@@ -13,10 +13,12 @@ const envSchema = z.object({
   // This is the public browser origin, not the private Render service URL.
   // Better Auth appends its /api/auth base path automatically.
   BETTER_AUTH_URL: z.string().url().optional(),
+  // Comma-separated trusted proxy IPs/CIDRs. Never use a broad client range.
+  BETTER_AUTH_TRUSTED_PROXIES: z.string().default(''),
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+  GEMINI_MODEL: z.string().default('gemini-3.6-flash'),
   ENCRYPTION_KEY: z.string().length(64).optional(),
   MAX_UPLOAD_BYTES: z.string().default('104857600').transform((val) => parseInt(val, 10)),
   MAX_SCANNED_FILES: z.string().default('10000').transform((val) => parseInt(val, 10)),
@@ -35,6 +37,8 @@ if (!parsed.success) {
 }
 
 export const config = parsed.success ? parsed.data : envSchema.parse({});
+
+export const trustedAuthProxies = config.BETTER_AUTH_TRUSTED_PROXIES.split(',').map((entry) => entry.trim()).filter(Boolean);
 
 export function assertRuntimeConfiguration(): void {
   const required = ['MONGODB_URI', 'BETTER_AUTH_SECRET', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'] as const;

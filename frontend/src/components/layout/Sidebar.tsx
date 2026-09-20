@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FolderGit2, Code2, Layers, LogOut } from 'lucide-react';
+import { FolderGit2, Code2, Heart, Layers, LogOut } from 'lucide-react';
 import { useAppStore } from '../../state/store';
 import { authClient } from '../../lib/auth-client';
 
@@ -20,6 +20,7 @@ export const Sidebar: React.FC = () => {
 
   const mainNav = [
     { label: 'Projects', href: '/workspace', icon: FolderGit2 },
+    { label: 'Favourites', href: '/workspace/favorites', icon: Heart },
   ];
 
   const projectNav = currentProject

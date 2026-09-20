@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, FolderGit2, Upload, FileCode, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, FolderGit2, Upload, FileCode, Trash2 } from 'lucide-react';
 import { fetchApi, uploadZipFile } from '../../services/api';
 import { ProcessingJob, Project } from '../../types';
 import { useAppStore } from '../../state/store';
@@ -92,6 +92,14 @@ export default function ProjectsDashboard() {
     } catch (err) { setError((err as Error).message); }
   };
 
+  const deleteProject = async (project: Project) => {
+    if (!window.confirm(`Delete “${project.name}” and all of its indexed files and AI data? This cannot be undone.`)) return;
+    try {
+      await fetchApi(`/projects/${project._id}`, { method: 'DELETE' });
+      setProjects((items) => items.filter((item) => item._id !== project._id));
+    } catch (err) { setError((err as Error).message); }
+  };
+
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8 select-none">
       <div className="flex items-center justify-between border-b border-[#30363d] pb-5">
@@ -133,8 +141,8 @@ export default function ProjectsDashboard() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {projects.map((proj) => (
+            <div key={proj._id} className="relative">
             <Link
-              key={proj._id}
               href={`/workspace/projects/${proj._id}`}
               onClick={() => setCurrentProject(proj)}
               className="block bg-[#161b22] border border-[#30363d] hover:border-zinc-500 rounded-xl p-5 transition-all group shadow-sm hover:shadow-md"
@@ -158,6 +166,8 @@ export default function ProjectsDashboard() {
                 <span>{proj.mainLanguage || 'Source'}</span>
               </div>
             </Link>
+            <button type="button" aria-label={`Delete ${proj.name}`} onClick={() => void deleteProject(proj)} className="absolute right-3 top-3 rounded p-1.5 text-zinc-500 hover:bg-red-950 hover:text-red-300" title="Delete project"><Trash2 size={14} /></button>
+            </div>
           ))}
         </div>
       )}

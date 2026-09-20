@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Code2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Code2, RotateCcw, Sparkles } from 'lucide-react';
 import { fetchApi } from '../../../../services/api';
-import { ProcessingJob, Project } from '../../../../types';
+import { AIGeneration, ProcessingJob, Project } from '../../../../types';
+import { MarkdownResponse } from '../../../../components/ai/MarkdownResponse';
 import { useProject } from '../../../../hooks/useProject';
 import { StatePanel } from '../../../../components/workspace/StatePanel';
 import { Badge } from '../../../../components/ui/Badge';
@@ -22,6 +23,10 @@ export default function ProjectOverview() {
   const [job, setJob] = useState<ProcessingJob | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<AIGeneration | null>(null);
+  const [overviewText, setOverviewText] = useState('');
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const status = project?.processingStatus;
   const jobId = project?.processingJobId;
@@ -47,6 +52,22 @@ export default function ProjectOverview() {
     const timer = window.setInterval(poll, 2000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [jobId, status, inProgress, refresh]);
+
+  useEffect(() => {
+    if (status !== 'ready') return;
+    fetchApi<AIGeneration | null>(`/ai/projects/${id}/overview`).then((saved) => { setOverview(saved); setOverviewText(saved?.content || ''); }).catch(() => undefined);
+  }, [id, status]);
+
+  const generateOverview = async () => {
+    setOverviewLoading(true); setOverviewError(null); setOverviewText('');
+    try {
+      const response = await fetch(`/api/ai/projects/${id}/overview`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!response.ok || !response.body) throw new Error((await response.json().catch(() => null))?.error?.message || 'Unable to generate an overview.');
+      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let content = ''; let generationId = '';
+      while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split('\n\n'); buffer = events.pop() || ''; for (const event of events) { if (!event.startsWith('data: ')) continue; const eventData = JSON.parse(event.slice(6)); if (eventData.chunk) { content += eventData.chunk; setOverviewText(content); } if (eventData.done) generationId = eventData.generationId; if (eventData.error) throw new Error(eventData.error.message); } }
+      if (generationId) setOverview({ _id: generationId, projectId: id, type: 'overview', title: 'Project overview', content, model: '', status: 'completed', createdAt: new Date().toISOString() });
+    } catch (error) { setOverviewError((error as Error).message); } finally { setOverviewLoading(false); }
+  };
 
   const retry = async () => {
     if (!jobId) return;
@@ -135,6 +156,12 @@ export default function ProjectOverview() {
           <Link href={`/workspace/projects/${id}/explorer`}>
             <Button><Code2 size={16} className="mr-1.5" />Open Code Explorer</Button>
           </Link>
+
+          <section className="rounded-xl border border-[#30363d] bg-[#161b22] p-5 space-y-4">
+            <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold text-white">AI Project Overview</h2><p className="mt-1 text-xs text-zinc-400">A persisted, bounded summary of the indexed project structure.</p></div><Button size="sm" disabled={overviewLoading} onClick={() => void generateOverview()}>{overviewLoading ? <Spinner size={14} /> : <><Sparkles size={14} className="mr-1.5" />{overview ? 'Regenerate' : 'Generate overview'}</>}</Button></div>
+            {overviewError && <p role="alert" className="text-xs text-red-300">{overviewError}</p>}
+            {overviewText && <MarkdownResponse content={overviewText} />}
+          </section>
         </>
       )}
 

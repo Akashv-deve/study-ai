@@ -1,7 +1,7 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import { ProjectFile } from '../../types';
-import { FileCode, Folder, ChevronRight, ChevronDown } from 'lucide-react';
+import { Expand, FileCode, X } from 'lucide-react';
 
 interface FileTreeProps {
   files: ProjectFile[];
@@ -10,8 +10,10 @@ interface FileTreeProps {
 }
 
 export const FileTree: React.FC<FileTreeProps> = ({ files, activePath, onSelectFile }) => {
+  const [full, setFull] = useState(false);
   return (
-    <div className="py-2 text-sm font-mono select-none overflow-y-auto h-full">
+    <div className={`${full ? 'fixed inset-0 z-50 bg-[#0d1117] p-4' : 'py-2'} text-sm font-mono select-none overflow-y-auto h-full`}>
+      <div className="mb-2 flex items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500"><span>Files</span><button type="button" title="Full screen" aria-label="Toggle file explorer full screen" onClick={() => setFull(!full)} className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white">{full ? <X size={14} /> : <Expand size={14} />}</button></div>
       {files.map((file) => {
         const isActive = activePath === file.path;
         return (
@@ -23,7 +25,7 @@ export const FileTree: React.FC<FileTreeProps> = ({ files, activePath, onSelectF
             }`}
           >
             <FileCode size={14} className="text-zinc-500 flex-shrink-0" />
-            <span className="truncate">{file.path}</span>
+            <span className="min-w-0" title={file.path}><span className="block truncate">{file.name}</span><span className="block truncate text-[10px] text-zinc-500">{file.directory || file.path}</span></span>
           </div>
         );
       })}

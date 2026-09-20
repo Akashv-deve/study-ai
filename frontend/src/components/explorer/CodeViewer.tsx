@@ -1,11 +1,11 @@
 'use client';
-import React from 'react';
+import React, { useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { ProjectFile } from '../../types';
-import { Sparkles } from 'lucide-react';
+import { Expand, Sparkles, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 
 interface CodeViewerProps {
@@ -16,6 +16,7 @@ interface CodeViewerProps {
 }
 
 export const CodeViewer: React.FC<CodeViewerProps> = ({ file, content, onAskAI, onSelectionChange }) => {
+  const [full, setFull] = useState(false);
   if (!file) {
     return (
       <div className="h-full flex items-center justify-center text-zinc-500 text-sm font-mono">
@@ -32,10 +33,11 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ file, content, onAskAI, 
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0d1117]">
+    <div className={`${full ? 'fixed inset-0 z-50' : 'h-full'} flex flex-col bg-[#0d1117]`}>
       <div className="h-10 border-b border-[#30363d] px-4 flex items-center justify-between bg-[#161b22] text-xs font-mono">
         <span className="text-zinc-300 font-medium truncate">{file.path}</span>
         <div className="flex items-center space-x-2">
+          <Button size="sm" variant="ghost" title="Full screen" onClick={() => setFull(!full)}>{full ? <X size={14} /> : <Expand size={14} />}</Button>
           {onAskAI && (
             <Button size="sm" variant="secondary" onClick={() => onAskAI(`Explain file ${file.path}`)}>
               <Sparkles size={13} className="mr-1.5 text-blue-400" />

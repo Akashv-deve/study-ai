@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { mongodbAdapter } from 'better-auth/adapters/mongodb';
-import { config } from './config';
+import { config, trustedAuthProxies } from './config';
 import type { Db } from 'mongodb';
 
 // Better Auth's instance carries the literal configuration in its generic type.
@@ -19,6 +19,7 @@ export function initializeAuth(database: Db): AuthInstance {
     secret: config.BETTER_AUTH_SECRET,
     baseURL: config.BETTER_AUTH_URL || config.FRONTEND_URL,
     trustedOrigins: [config.FRONTEND_URL],
+    advanced: trustedAuthProxies.length ? { ipAddress: { trustedProxies: trustedAuthProxies } } : undefined,
     socialProviders: {
       github: {
         clientId: config.GITHUB_CLIENT_ID,

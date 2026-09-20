@@ -7,6 +7,9 @@ export interface IAIGeneration {
   type: string;
   title: string;
   promptSummary?: string;
+  prompt?: string;
+  contextKey: string;
+  isActive: boolean;
   context?: Record<string, unknown>;
   content: string;
   language?: string;
@@ -27,6 +30,10 @@ const AIGenerationSchema = new Schema<IAIGeneration>(
     type: { type: String, required: true },
     title: { type: String, required: true },
     promptSummary: { type: String },
+    prompt: { type: String },
+    // A generation is replaced only within this explicit scope (project/file/selection).
+    contextKey: { type: String, required: true, default: 'project' },
+    isActive: { type: Boolean, default: true, index: true },
     context: { type: Schema.Types.Mixed },
     content: { type: String, required: true },
     language: { type: String },
@@ -40,5 +47,6 @@ const AIGenerationSchema = new Schema<IAIGeneration>(
 );
 
 AIGenerationSchema.index({ userId: 1, projectId: 1, createdAt: -1 });
+AIGenerationSchema.index({ userId: 1, projectId: 1, contextKey: 1, isActive: 1, createdAt: -1 });
 
 export const AIGeneration = mongoose.model<IAIGeneration>('AIGeneration', AIGenerationSchema);

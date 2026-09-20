@@ -5,6 +5,7 @@ import { ProcessingJob } from '../models/processingJob.model';
 import { AIGeneration } from '../models/aiGeneration.model';
 import { Conversation } from '../models/conversation.model';
 import { Message } from '../models/message.model';
+import { FavoriteResponse } from '../models/favoriteResponse.model';
 import { ActivityEvent } from '../models/activityEvent.model';
 import mongoose from 'mongoose';
 
@@ -64,6 +65,9 @@ export class ProjectRepository {
       Message.deleteMany({ conversationId: { $in: conversationIds } }),
       Conversation.deleteMany({ projectId: id, userId }),
       AIGeneration.deleteMany({ projectId: id, userId }),
+      // Favourites are durable snapshots. Keep their readable content after project removal,
+      // but remove the live project link so the UI cannot offer a broken protected route.
+      FavoriteResponse.updateMany({ projectId: id, userId }, { $set: { projectDeletedAt: new Date() }, $unset: { projectId: '' } }),
       ActivityEvent.deleteMany({ projectId: id, userId }),
       ProjectFile.deleteMany({ projectId: id }),
       FileContent.deleteMany({ projectId: id }),

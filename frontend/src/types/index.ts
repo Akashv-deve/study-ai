@@ -47,7 +47,23 @@ export interface AIGeneration {
   title: string;
   content: string;
   filePath?: string;
+  selection?: { code?: string; startLine?: number; endLine?: number };
   model: string;
+  modelName?: string;
   status: string;
+  prompt?: string;
+  promptSummary?: string;
+  contextKey?: string;
+  conversationId?: string;
+  isActive?: boolean;
+  isFavorite?: boolean;
   createdAt: string;
+}
+
+export interface FavoriteResponse extends Omit<AIGeneration, 'projectId'> {
+  projectId?: string;
+  projectName: string;
+  projectDeletedAt?: string;
+  sourceGenerationId?: string;
+  modelName: string;
 }
