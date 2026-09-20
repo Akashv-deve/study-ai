@@ -1,0 +1,17 @@
+{
+  "name": "study-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A project-aware AI learning and interview assistant for software developers",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "typecheck:backend": "npm --prefix backend run typecheck",
+    "typecheck:frontend": "npm --prefix frontend run typecheck",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install"
+  }
+}
