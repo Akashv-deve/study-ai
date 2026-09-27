@@ -4,6 +4,7 @@ import { connectDatabase } from './config/database';
 import mongoose from 'mongoose';
 import { initializeAuth } from './auth';
 import { startJobProcessor, stopJobProcessor } from './jobs/processor';
+import { migratePracticeAttempts } from './practice/migrations';
 
 async function bootstrap() {
   const server = app.listen(config.PORT, '0.0.0.0', () => {
@@ -13,9 +14,10 @@ async function bootstrap() {
   // The health endpoint remains live during an outage, but protected routes are never
   // allowed to run until MongoDB and Better Auth share the same real connection.
   connectDatabase()
-    .then(() => {
+    .then(async () => {
       if (!mongoose.connection.db) throw new Error('MongoDB connection is unavailable');
       initializeAuth(mongoose.connection.db);
+      await migratePracticeAttempts();
       startJobProcessor();
     })
     .catch((err) => {

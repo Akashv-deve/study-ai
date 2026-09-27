@@ -9,13 +9,17 @@ import { FileTree } from '../../../../../components/explorer/FileTree';
 import { StatePanel } from '../../../../../components/workspace/StatePanel';
 import { Button } from '../../../../../components/ui/Button';
 import { Spinner } from '../../../../../components/ui/Spinner';
+import { useAIGeneration } from '../../../../../hooks/useAIGeneration';
+import { useFileSelection } from '../../../../../hooks/useFileSelection';
 import { useProject } from '../../../../../hooks/useProject';
+import { RestoredResponse, contextKeyFor, fromGeneration, isBusy, stateContextKey } from '../../../../../lib/aiGeneration';
 import { fetchApi } from '../../../../../services/api';
 import { AIGeneration, ProjectFile } from '../../../../../types';
 import { useAppStore } from '../../../../../state/store';
 
-interface StreamState { content: string; generationId?: string; conversationId?: string; isFavorite?: boolean; incomplete?: boolean; retryPrompt?: string; filePath?: string; selection?: { code?: string; startLine?: number; endLine?: number }; type?: string; modelName?: string; createdAt?: string; }
 type FilesState = 'idle' | 'loading' | 'ready' | 'error';
+/** How long a selection must stay put before we look up the stored response for it. */
+const RESTORE_DEBOUNCE_MS = 250;
 
 export default function ExplorerPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,38 +28,57 @@ export default function ExplorerPage() {
   const [filesState, setFilesState] = useState<FilesState>('idle');
   const [filesError, setFilesError] = useState<string | null>(null);
   const [filesReload, setFilesReload] = useState(0);
-  const [activeFile, setActiveFile] = useState<ProjectFile | null>(null);
-  const [content, setContent] = useState('');
-  const [fileError, setFileError] = useState<string | null>(null);
-  const [stream, setStream] = useState<StreamState>({ content: '' });
-  const [streaming, setStreaming] = useState(false);
-  const selectRequest = useRef(0);
-  const setStoreFile = useAppStore((state) => state.setActiveFile);
+  const [actionError, setActionError] = useState<string | null>(null);
   const setStoreFiles = useAppStore((state) => state.setFiles);
   const activeSelection = useAppStore((state) => state.activeSelection);
   const setActiveSelection = useAppStore((state) => state.setActiveSelection);
 
+  const { activeFile, content, loading: fileLoading, error: fileError, selectFile, retryLoad } = useFileSelection(id);
+  const { state: ai, generate, retry, regenerate, cancel, restore, setFavorite, clear } = useAIGeneration(id);
+  const busy = isBusy(ai.status);
   const ready = project?.processingStatus === 'ready';
+  const contextKey = contextKeyFor(activeFile?.path, activeSelection);
 
-  // Navigating between projects reuses this component, so clear everything tied to the previous one.
-  useEffect(() => {
-    selectRequest.current += 1;
-    setFiles([]); setFilesState('idle'); setFilesError(null);
-    setActiveFile(null); setContent(''); setFileError(null);
-    setStream({ content: '' });
-    setStoreFiles([]); setStoreFile(null); setActiveSelection(null);
-  }, [id, setStoreFiles, setStoreFile, setActiveSelection]);
+  // Latest stored response per context for this project, so returning to a context never re-asks the server.
+  const restoreCache = useRef(new Map<string, RestoredResponse | null>());
+  // The click handlers below are identity-stable (so memoised children are not re-rendered on every AI
+  // chunk) and read the current values through this ref instead.
+  const live = useRef({ activeFile, activeSelection, ai });
+  live.current = { activeFile, activeSelection, ai };
 
-  // Restore only the exact project/file/selection context currently in view.
   useEffect(() => {
-    if (!ready) return;
-    let cancelled = false;
-    const key = encodeURIComponent(activeFile ? `${activeFile.path}${activeSelection?.code ? `:${activeSelection.startLine ?? 0}-${activeSelection.endLine ?? 0}` : ''}` : 'project');
-    fetchApi<AIGeneration | null>(`/ai/projects/${id}/latest?contextKey=${key}`)
-      .then((latest) => { if (!cancelled) setStream(latest ? { content: latest.content, generationId: latest._id, conversationId: latest.conversationId, isFavorite: latest.isFavorite, retryPrompt: latest.prompt || latest.promptSummary || latest.title, filePath: latest.filePath, selection: latest.selection, type: latest.type, modelName: latest.modelName || latest.model, createdAt: latest.createdAt } : { content: '' }); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [id, ready, activeFile, activeSelection]);
+    restoreCache.current = new Map();
+    setFiles([]); setFilesState('idle'); setFilesError(null); setActionError(null);
+    setStoreFiles([]);
+  }, [id, setStoreFiles]);
+
+  // Keep the per-context cache in step with what is on screen once a response is durable.
+  useEffect(() => {
+    if ((ai.status === 'completed' || ai.status === 'idle') && ai.generationId && ai.request) {
+      restoreCache.current.set(stateContextKey(ai), { content: ai.content, generationId: ai.generationId, conversationId: ai.conversationId, isFavorite: ai.isFavorite, request: ai.request, filePath: ai.filePath, selection: ai.selection, type: ai.type, modelName: ai.modelName, createdAt: ai.createdAt });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ai.status, ai.generationId, ai.isFavorite]);
+
+  // Show the stored response for exactly the context in view. Never while something is being generated,
+  // and a selection that is still being dragged does not cause a request per step.
+  useEffect(() => {
+    if (!ready || busy) return;
+    const cached = restoreCache.current.get(contextKey);
+    if (cached !== undefined) { restore(contextKey, cached); return; }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetchApi<AIGeneration | null>(`/ai/projects/${id}/latest?contextKey=${encodeURIComponent(contextKey)}`, { signal: controller.signal })
+        .then((latest) => {
+          const response = latest ? fromGeneration(latest) : null;
+          restoreCache.current.set(contextKey, response);
+          restore(contextKey, response);
+        })
+        // Best effort: if the lookup fails (or is superseded) the current view stays, and it is labelled with its own file/selection.
+        .catch(() => undefined);
+    }, RESTORE_DEBOUNCE_MS);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [id, ready, busy, contextKey, restore]);
 
   // GET /projects/:id/files — only once the project is known to be ready.
   useEffect(() => {
@@ -68,44 +91,44 @@ export default function ExplorerPage() {
     return () => { cancelled = true; };
   }, [id, ready, filesReload, setStoreFiles]);
 
-  const selectFile = useCallback(async (file: ProjectFile) => {
-    const requestId = ++selectRequest.current;
-    setFileError(null);
-    try {
-      const data = await fetchApi<{ file: ProjectFile; content: string }>(`/projects/${id}/files/${file._id}/content`);
-      if (requestId !== selectRequest.current) return;
-      setActiveFile(file); setContent(data.content); setStoreFile(file, data.content);
-      setActiveSelection(null);
-    } catch (err) {
-      if (requestId !== selectRequest.current) return;
-      setFileError(`Couldn't open ${file.path}: ${(err as Error).message}`);
-    }
-  }, [id, setStoreFile, setActiveSelection]);
-
-  const generate = useCallback(async (prompt: string, regenerateId?: string) => {
-    if (streaming) return;
-    const retained = stream;
-    setStreaming(true); setStream({ ...retained, content: '', incomplete: false, retryPrompt: prompt || retained.retryPrompt, filePath: activeFile?.path ?? retained.filePath, selection: activeSelection || retained.selection, type: activeFile ? 'file_explanation' : (retained.type || 'chat') });
-    try {
-      const response = await fetch(regenerateId ? `/api/ai/generations/${regenerateId}/regenerate` : '/api/ai/generate', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(regenerateId ? {} : { projectId: id, type: activeFile ? 'file_explanation' : 'chat', prompt, filePath: activeFile?.path, selection: activeSelection || undefined, generationId: stream.generationId, conversationId: stream.conversationId }) });
-      if (!response.ok || !response.body) throw new Error((await response.json().catch(() => null))?.error?.message || `Request failed (${response.status})`);
-      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let next = { ...retained, content: '', incomplete: false, retryPrompt: prompt || retained.retryPrompt, filePath: activeFile?.path ?? retained.filePath, selection: activeSelection || retained.selection, type: activeFile ? 'file_explanation' : (retained.type || 'chat') } as StreamState;
-      const processEvents = (events: string[]) => { for (const event of events) { if (!event.startsWith('data: ')) continue; const payload = JSON.parse(event.slice(6)); if (payload.chunk) { next = { ...next, content: next.content + payload.chunk }; setStream(next); } if (payload.done) { next = { ...next, generationId: payload.generationId, conversationId: payload.conversationId, incomplete: false }; setStream(next); } if (payload.error) throw new Error(payload.error.message); } };
-      while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split('\n\n'); buffer = events.pop() || ''; processEvents(events); }
-      buffer += decoder.decode(); if (buffer.trim()) processEvents([buffer]);
-    } catch (error) { setStream((current) => ({ ...(current.content ? current : retained), incomplete: true, content: current.content || retained.content || `Generation failed: ${(error as Error).message}` })); } finally { setStreaming(false); }
-  }, [activeFile, activeSelection, id, stream, streaming]);
+  const ask = useCallback((prompt: string) => {
+    const { activeFile: file, activeSelection: selection, ai: current } = live.current;
+    // A follow-up may continue a conversation only when it is about the same file/selection as that response.
+    const continues = Boolean(current.generationId) && stateContextKey(current) === contextKeyFor(file?.path, selection);
+    setActionError(null);
+    void generate({
+      prompt,
+      type: file ? 'file_explanation' : 'chat',
+      filePath: file?.path,
+      selection: selection ?? undefined,
+      generationId: continues ? current.generationId : undefined,
+      conversationId: continues ? current.conversationId : undefined,
+    });
+  }, [generate]);
 
   const deleteResponse = useCallback(async () => {
-    if (!stream.generationId || !window.confirm('Delete this AI response?')) return;
-    await fetchApi(`/ai/generations/${stream.generationId}`, { method: 'DELETE' });
-    setStream({ content: '' });
-  }, [stream.generationId]);
+    const { ai: current } = live.current;
+    if (!current.generationId || !window.confirm('Delete this AI response?')) return;
+    setActionError(null);
+    try {
+      await fetchApi(`/ai/generations/${current.generationId}`, { method: 'DELETE' });
+      restoreCache.current.set(stateContextKey(current), null);
+      clear();
+    } catch (err) { setActionError(`Couldn't delete the response: ${(err as Error).message}`); }
+  }, [clear]);
+
   const favoriteResponse = useCallback(async () => {
-    if (!stream.generationId) return;
-    await fetchApi(`/ai/generations/${stream.generationId}/favorite`, { method: stream.isFavorite ? 'DELETE' : 'POST' });
-    setStream((current) => ({ ...current, isFavorite: !current.isFavorite }));
-  }, [stream.generationId, stream.isFavorite]);
+    const { ai: current } = live.current;
+    if (!current.generationId) return;
+    setActionError(null);
+    try {
+      await fetchApi(`/ai/generations/${current.generationId}/favorite`, { method: current.isFavorite ? 'DELETE' : 'POST' });
+      setFavorite(!current.isFavorite);
+    } catch (err) { setActionError(`Couldn't update the favourite: ${(err as Error).message}`); }
+  }, [setFavorite]);
+
+  const onRegenerate = useCallback(() => { setActionError(null); void regenerate(); }, [regenerate]);
+  const onRetry = useCallback(() => { setActionError(null); void retry(); }, [retry]);
 
   const backToProjects = (
     <Link href="/workspace">
@@ -179,11 +202,10 @@ export default function ExplorerPage() {
             <div className="flex-1 min-h-0"><FileTree files={files} activePath={activeFile?.path} onSelectFile={selectFile} /></div>
           )}
         </aside>
-        <div className="relative min-w-0 h-full overflow-hidden">
-          {fileError && <div role="alert" className="absolute top-2 left-2 right-2 z-10 rounded-md border border-red-800 bg-red-950/90 px-3 py-2 text-xs text-red-200">{fileError}</div>}
-          <CodeViewer file={activeFile} content={content} onAskAI={generate} onSelectionChange={setActiveSelection} />
+        <div className="min-w-0 h-full overflow-hidden">
+          <CodeViewer file={activeFile} content={content} loading={fileLoading} error={fileError} onRetryLoad={retryLoad} aiBusy={busy} onAskAI={ask} onSelectionChange={setActiveSelection} />
         </div>
-        <AIPanel streamOutput={stream.content} isStreaming={streaming} incomplete={stream.incomplete} context={stream} onGenerate={generate} generationId={stream.generationId} isFavorite={stream.isFavorite} onRegenerate={() => void generate('', stream.generationId)} onRetry={() => void generate(stream.retryPrompt || '', stream.generationId)} onDelete={() => void deleteResponse()} onFavorite={() => void favoriteResponse()} />
+        <AIPanel status={ai.status} content={ai.content} error={ai.error} context={ai} generationId={ai.generationId} isFavorite={ai.isFavorite} actionError={actionError} onGenerate={ask} onRegenerate={onRegenerate} onRetry={onRetry} onCancel={cancel} onDelete={() => void deleteResponse()} onFavorite={() => void favoriteResponse()} />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { FolderGit2, Code2, Heart, Layers, LogOut } from 'lucide-react';
+import { FolderGit2, Code2, Heart, Layers, LogOut, LayoutDashboard, GraduationCap, MessageSquare, TrendingUp } from 'lucide-react';
 import { useAppStore } from '../../state/store';
 import { authClient } from '../../lib/auth-client';
 
@@ -19,9 +19,14 @@ export const Sidebar: React.FC = () => {
   };
 
   const mainNav = [
+    { label: 'Dashboard', href: '/workspace/dashboard', icon: LayoutDashboard },
     { label: 'Projects', href: '/workspace', icon: FolderGit2 },
+    { label: 'Practice Lab', href: '/workspace/practice', icon: GraduationCap },
+    { label: 'Interview Coach', href: '/workspace/interview', icon: MessageSquare },
+    { label: 'Progress', href: '/workspace/progress', icon: TrendingUp },
     { label: 'Favourites', href: '/workspace/favorites', icon: Heart },
   ];
+  const isActive = (href: string) => (href === '/workspace' ? pathname === href : pathname.startsWith(href));
 
   const projectNav = currentProject
     ? [
@@ -47,7 +52,7 @@ export const Sidebar: React.FC = () => {
           <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-2 mb-2">Workspace</div>
           {mainNav.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = isActive(item.href);
             return (
               <Link
                 key={item.href}

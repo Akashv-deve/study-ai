@@ -13,6 +13,8 @@ import healthRoutes from './routes/health.routes';
 import projectRoutes from './routes/project.routes';
 import fileRoutes from './routes/file.routes';
 import aiRoutes from './routes/ai.routes';
+import practiceRoutes from './routes/practice.routes';
+import interviewRoutes from './routes/interview.routes';
 
 const app = express();
 
@@ -46,6 +48,8 @@ app.use('/', healthRoutes);
 app.use('/api/projects', requireAuth, projectRoutes);
 app.use('/api', requireAuth, fileRoutes);
 app.use('/api/ai', requireAuth, aiRoutes);
+app.use('/api/practice', requireAuth, practiceRoutes);
+app.use('/api/interview', requireAuth, interviewRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

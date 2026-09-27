@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Code2, RotateCcw, Sparkles } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { AlertTriangle, ArrowLeft, Code2, GraduationCap, MessageSquare, RotateCcw, Sparkles } from 'lucide-react';
 import { fetchApi } from '../../../../services/api';
 import { AIGeneration, ProcessingJob, Project } from '../../../../types';
 import { MarkdownResponse } from '../../../../components/ai/MarkdownResponse';
+import { createSseParser, SseFormatError } from '../../../../lib/sse';
+import { httpFailure } from '../../../../lib/aiGeneration';
 import { useProject } from '../../../../hooks/useProject';
 import { StatePanel } from '../../../../components/workspace/StatePanel';
 import { Badge } from '../../../../components/ui/Badge';
@@ -19,6 +21,7 @@ const statusVariant = (status: ProcessingStatus) => (status === 'ready' ? 'succe
 
 export default function ProjectOverview() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { project, error, loading, reload, refresh } = useProject(id);
   const [job, setJob] = useState<ProcessingJob | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -59,14 +62,29 @@ export default function ProjectOverview() {
   }, [id, status]);
 
   const generateOverview = async () => {
+    if (overviewLoading) return;
     setOverviewLoading(true); setOverviewError(null); setOverviewText('');
+    let content = ''; let generationId = ''; let terminal = false;
     try {
       const response = await fetch(`/api/ai/projects/${id}/overview`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      if (!response.ok || !response.body) throw new Error((await response.json().catch(() => null))?.error?.message || 'Unable to generate an overview.');
-      const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let content = ''; let generationId = '';
-      while (true) { const { done, value } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const events = buffer.split('\n\n'); buffer = events.pop() || ''; for (const event of events) { if (!event.startsWith('data: ')) continue; const eventData = JSON.parse(event.slice(6)); if (eventData.chunk) { content += eventData.chunk; setOverviewText(content); } if (eventData.done) generationId = eventData.generationId; if (eventData.error) throw new Error(eventData.error.message); } }
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(httpFailure(response.status, body?.error?.message).message);
+      }
+      const parser = createSseParser((raw) => {
+        const event = raw as { chunk?: unknown; done?: unknown; generationId?: string; error?: { message?: string } };
+        if (typeof event.chunk === 'string' && event.chunk) { content += event.chunk; setOverviewText(content); }
+        else if (event.done) { terminal = true; generationId = event.generationId ?? ''; }
+        else if (event.error) { terminal = true; throw new Error(event.error.message || 'The overview could not be completed.'); }
+      });
+      const reader = response.body.getReader(); const decoder = new TextDecoder();
+      for (;;) { const { done, value } = await reader.read(); if (done) break; parser.push(decoder.decode(value, { stream: true })); }
+      parser.push(decoder.decode()); parser.flush(); // a final event that arrived without its terminator
+      if (!terminal) throw new Error('The response stream ended before the overview finished. What arrived is shown above; generate again to retry.');
       if (generationId) setOverview({ _id: generationId, projectId: id, type: 'overview', title: 'Project overview', content, model: '', status: 'completed', createdAt: new Date().toISOString() });
-    } catch (error) { setOverviewError((error as Error).message); } finally { setOverviewLoading(false); }
+    } catch (error) {
+      setOverviewError(error instanceof SseFormatError ? 'The response stream was corrupted. Generate again to retry.' : error instanceof TypeError ? 'The connection was interrupted before the overview finished. Check your connection and try again.' : (error as Error).message);
+    } finally { setOverviewLoading(false); }
   };
 
   const retry = async () => {
@@ -153,9 +171,23 @@ export default function ProjectOverview() {
             </div>
           )}
 
-          <Link href={`/workspace/projects/${id}/explorer`}>
-            <Button><Code2 size={16} className="mr-1.5" />Open Code Explorer</Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/workspace/projects/${id}/explorer`}>
+              <Button><Code2 size={16} className="mr-1.5" />Open Code Explorer</Button>
+            </Link>
+            <Link href={`/workspace/practice/${project.mainLanguage?.toLowerCase() === 'python' ? 'python' : 'javascript'}?mode=practice&projectId=${id}`}>
+              <Button variant="secondary"><GraduationCap size={16} className="mr-1.5" />Practice This Project</Button>
+            </Link>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                const session = await fetchApi<{ _id: string }>('/interview', { method: 'POST', body: JSON.stringify({ projectId: id }) });
+                router.push(`/workspace/interview/${session._id}`);
+              }}
+            >
+              <MessageSquare size={16} className="mr-1.5" />Interview Me About This Project
+            </Button>
+          </div>
 
           <section className="rounded-xl border border-[#30363d] bg-[#161b22] p-5 space-y-4">
             <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold text-white">AI Project Overview</h2><p className="mt-1 text-xs text-zinc-400">A persisted, bounded summary of the indexed project structure.</p></div><Button size="sm" disabled={overviewLoading} onClick={() => void generateOverview()}>{overviewLoading ? <Spinner size={14} /> : <><Sparkles size={14} className="mr-1.5" />{overview ? 'Regenerate' : 'Generate overview'}</>}</Button></div>

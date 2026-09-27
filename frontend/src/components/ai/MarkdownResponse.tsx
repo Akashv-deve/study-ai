@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-python';
@@ -24,12 +24,16 @@ function renderToken(value: TokenValue | TokenValue[], key = 'token'): React.Rea
   return <span className={className}>{renderToken(value.content, `${key}-${value.type}`)}</span>;
 }
 
-function HighlightedCode({ source, language }: { source: string; language: string }) {
+// Completed code blocks keep the same (source, language) while later text streams in, so memoising
+// the tokenisation means each block is highlighted once instead of on every streamed chunk.
+const HighlightedCode = React.memo(function HighlightedCode({ source, language }: { source: string; language: string }) {
   const normalized = aliases[language.toLowerCase()] || language.toLowerCase();
-  const grammar = Prism.languages[normalized];
-  const tokens = grammar ? Prism.tokenize(source, grammar) as TokenValue[] : [source];
+  const tokens = useMemo(() => {
+    const grammar = Prism.languages[normalized];
+    return grammar ? Prism.tokenize(source, grammar) as TokenValue[] : [source];
+  }, [source, normalized]);
   return <pre className="my-3 overflow-x-auto rounded-md border border-[#30363d] bg-[#0d1117] p-3 text-[11px] leading-relaxed"><span className="mb-2 block text-[10px] uppercase text-zinc-500">{normalized || 'code'}<CopyCodeButton code={source} /></span><code>{renderToken(tokens)}</code></pre>;
-}
+});
 
 // AI output becomes React text nodes, never injected HTML. Incomplete fences remain valid code blocks while streaming.
 function inline(value: string) {
