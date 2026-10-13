@@ -93,7 +93,11 @@ export async function generateAI(req: Request, res: Response, next: NextFunction
     // The previous ordinary response for this context is only removed now that the replacement is durable.
     // Selecting "older than the new one" (ids grow with time) keeps this race-safe: two overlapping requests can
     // never delete each other, so the newest always survives and there is never more than one active response.
-    const previous = await AIGeneration.find({ userId, projectId, contextKey: key, isActive: true, _id: { $lt: savedGeneration._id } }).select('_id conversationId').lean();
+    // Critically, this must NEVER include a generation belonging to the conversation currently being
+    // continued (a follow-up shares the same contextKey as the original explanation) — otherwise a
+    // follow-up would delete the very explanation it is a follow-up TO. Only a genuinely different,
+    // independent conversation's stale response for the same context is cleaned up here.
+    const previous = await AIGeneration.find({ userId, projectId, contextKey: key, isActive: true, _id: { $lt: savedGeneration._id }, conversationId: { $ne: conversation._id } }).select('_id conversationId').lean();
     await Message.updateOne({ _id: requestMessage._id, conversationId: conversation._id }, { $set: { metadata: { generationId: savedGeneration._id } } });
     // A conversation must never keep a reference to a generation that is about to be deleted.
     const removedIds = new Set(previous.map((item) => String(item._id)));
@@ -152,6 +156,17 @@ export async function getLatestGeneration(req: Request, res: Response, next: Nex
     const generation = await AIGeneration.findOne({ userId: req.user!.id, projectId, isActive: true, ...(key ? { contextKey: key } : {}) }).sort({ createdAt: -1 }).lean();
     const favorite = generation ? await FavoriteResponse.exists({ userId: req.user!.id, sourceGenerationId: generation._id }) : null;
     res.json({ data: generation ? { ...generation, isFavorite: Boolean(favorite) } : null });
+  } catch (error) { next(error); }
+}
+
+export async function getConversationMessages(req: Request, res: Response, next: NextFunction) {
+  try {
+    const conversationId = String(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(conversationId)) throw new ValidationError('A valid conversation id is required');
+    const conversation = await Conversation.findOne({ _id: conversationId, userId: req.user!.id }).lean();
+    if (!conversation) throw new NotFoundError('Conversation not found');
+    const messages = await Message.find({ conversationId }).sort({ createdAt: 1 }).limit(200).lean();
+    res.json({ data: messages });
   } catch (error) { next(error); }
 }
 

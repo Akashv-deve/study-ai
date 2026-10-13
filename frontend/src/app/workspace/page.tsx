@@ -101,10 +101,10 @@ export default function ProjectsDashboard() {
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-8 select-none">
-      <div className="flex items-center justify-between border-b border-[#30363d] pb-5">
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto space-y-6 sm:space-y-8 select-none">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#30363d] pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-white">Study Workspaces</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Study Workspaces</h1>
           <p className="text-xs text-zinc-400 mt-1">
             Manage your analyzed software projects, uploaded ZIP archives, and imported codebases.
           </p>
@@ -116,14 +116,14 @@ export default function ProjectsDashboard() {
       </div>
 
       {error && <div role="alert" className="border border-red-800 bg-red-950/40 text-red-300 rounded-lg px-4 py-3 text-sm">{error}</div>}
-      {activeJob && <div className="border border-[#30363d] bg-[#161b22] rounded-lg px-4 py-3 text-sm flex items-center justify-between"><div><span className="text-zinc-200">{activeJob.stage}</span><span className="ml-2 text-zinc-500">{activeJob.progress}%</span>{activeJob.error && <span className="block text-red-400 text-xs mt-1">{activeJob.error}</span>}</div>{activeJob.status === 'failed' && <Button size="sm" onClick={retry}>Retry</Button>}{activeJob.status === 'ready' && <span className="text-green-400 text-xs">Project ready</span>}</div>}
+      {activeJob && <div className="border border-[#30363d] bg-[#161b22] rounded-lg px-4 py-3 text-sm flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0 break-words"><span className="text-zinc-200">{activeJob.stage}</span><span className="ml-2 text-zinc-500">{activeJob.progress}%</span>{activeJob.error && <span className="block text-red-400 text-xs mt-1">{activeJob.error}</span>}</div>{activeJob.status === 'failed' && <Button size="sm" onClick={retry}>Retry</Button>}{activeJob.status === 'ready' && <span className="text-green-400 text-xs">Project ready</span>}</div>}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Spinner size={32} />
         </div>
       ) : projects.length === 0 ? (
-        <div className="border border-dashed border-[#30363d] rounded-2xl p-12 text-center space-y-4 max-w-md mx-auto my-12 bg-[#161b22]/50">
+        <div className="border border-dashed border-[#30363d] rounded-2xl p-6 sm:p-12 text-center space-y-4 max-w-md mx-auto my-12 bg-[#161b22]/50">
           <div className="w-12 h-12 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center mx-auto">
             <FolderGit2 size={24} />
           </div>
@@ -141,33 +141,45 @@ export default function ProjectsDashboard() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {projects.map((proj) => (
-            <div key={proj._id} className="relative">
-            <Link
-              href={`/workspace/projects/${proj._id}`}
-              onClick={() => setCurrentProject(proj)}
-              className="block bg-[#161b22] border border-[#30363d] hover:border-zinc-500 rounded-xl p-5 transition-all group shadow-sm hover:shadow-md"
-            >
-              <div className="flex items-start justify-between">
-                <div className="font-semibold text-white group-hover:text-blue-400 transition-colors truncate">
-                  {proj.name}
-                </div>
+            // Card layout: header row (title + delete, each in its own flex cell) → description → metadata
+            // (status badge, files, language). Nothing here is absolutely positioned for layout; the only
+            // absolutely-positioned piece is the invisible "stretched link" overlay that makes the whole card
+            // clickable, and the delete button sits above it (z-10) in normal flow.
+            <article key={proj._id} className="relative flex flex-col bg-[#161b22] border border-[#30363d] hover:border-zinc-500 focus-within:border-blue-500 rounded-xl p-4 sm:p-5 transition-colors shadow-sm hover:shadow-md group min-w-0">
+              <div className="flex items-start gap-2">
+                <h2 className="min-w-0 flex-1 text-base font-semibold text-white group-hover:text-blue-400 transition-colors break-words [overflow-wrap:anywhere]">
+                  <Link
+                    href={`/workspace/projects/${proj._id}`}
+                    onClick={() => setCurrentProject(proj)}
+                    className="focus:outline-none focus-visible:underline before:absolute before:inset-0 before:rounded-xl before:content-['']"
+                  >
+                    {proj.name}
+                  </Link>
+                </h2>
+                <button
+                  type="button"
+                  aria-label={`Delete project ${proj.name}`}
+                  title="Delete project"
+                  onClick={() => void deleteProject(proj)}
+                  className="relative z-10 -mr-1 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-red-950 hover:text-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
+              <p className="text-xs text-zinc-400 line-clamp-2 my-3 min-h-[32px] break-words">
+                {proj.description || 'Uploaded project codebase.'}
+              </p>
+              <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-zinc-500 pt-3 border-t border-[#30363d]/60">
                 <Badge variant={proj.processingStatus === 'ready' ? 'success' : 'warning'}>
                   {proj.processingStatus}
                 </Badge>
-              </div>
-              <p className="text-xs text-zinc-400 line-clamp-2 my-3 min-h-[32px]">
-                {proj.description || 'Uploaded project codebase.'}
-              </p>
-              <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-3 border-t border-[#30363d]/60">
                 <span className="flex items-center">
-                  <FileCode size={13} className="mr-1" />
+                  <FileCode size={13} className="mr-1" aria-hidden="true" />
                   {proj.fileCount || 0} files
                 </span>
-                <span>{proj.mainLanguage || 'Source'}</span>
+                <span className="ml-auto truncate max-w-[40%]">{proj.mainLanguage || 'Source'}</span>
               </div>
-            </Link>
-            <button type="button" aria-label={`Delete ${proj.name}`} onClick={() => void deleteProject(proj)} className="absolute right-3 top-3 rounded p-1.5 text-zinc-500 hover:bg-red-950 hover:text-red-300" title="Delete project"><Trash2 size={14} /></button>
-            </div>
+            </article>
           ))}
         </div>
       )}
@@ -207,7 +219,7 @@ export default function ProjectsDashboard() {
             <p className="mt-2 text-[11px] text-zinc-500">Drop a ZIP here or choose one (maximum 100 MB).</p>
           </div>
 
-          <div className="pt-3 flex justify-end space-x-2">
+          <div className="pt-3 flex flex-wrap justify-end gap-2">
             <Button variant="ghost" type="button" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>

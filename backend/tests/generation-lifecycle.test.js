@@ -205,3 +205,78 @@ describe('context-aware generation retrieval', () => {
     expect(res.json).toHaveBeenCalledWith({ data: null });
   });
 });
+
+describe('Task 13/14 — a follow-up never deletes the explanation it continues', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('the "previous ordinary response" cleanup query excludes the conversation currently being continued', async () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const userId = 'user-a';
+    const conversationId = new mongoose.Types.ObjectId();
+    const originalGenerationId = new mongoose.Types.ObjectId();
+    const newGenerationId = new mongoose.Types.ObjectId();
+
+    jest.spyOn(projectRepository, 'findOwnedById').mockResolvedValue({ _id: projectId });
+    jest.spyOn(contextBuilder, 'buildContext').mockResolvedValue('');
+    jest.spyOn(geminiProvider, 'isAvailable').mockReturnValue(true);
+    jest.spyOn(geminiProvider, 'generateStream').mockImplementation(() => oneChunk('follow-up answer'));
+
+    jest.spyOn(AIGeneration, 'findOne').mockResolvedValue(null); // no generationId in the request -> no parent lookup needed
+    const conversationDoc = { _id: conversationId, userId, projectId, generationId: originalGenerationId };
+    jest.spyOn(Conversation, 'findOne').mockResolvedValue(conversationDoc); // the existing conversation being continued
+    jest.spyOn(Conversation, 'create');
+    jest.spyOn(Message, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId(), conversationId });
+    jest.spyOn(Message, 'updateOne').mockResolvedValue({});
+    jest.spyOn(Message, 'countDocuments').mockResolvedValue(2);
+    jest.spyOn(Message, 'deleteMany').mockResolvedValue({ deletedCount: 0 });
+    jest.spyOn(Conversation, 'updateOne').mockResolvedValue({});
+    jest.spyOn(Conversation, 'deleteOne').mockResolvedValue({ deletedCount: 0 });
+    jest.spyOn(AIGeneration, 'create').mockResolvedValue({ _id: newGenerationId, title: 'follow-up answer' });
+    const find = jest.fn().mockReturnValue({ select: () => ({ lean: async () => [] }) });
+    jest.spyOn(AIGeneration, 'find').mockImplementation(find);
+    jest.spyOn(AIGeneration, 'deleteMany').mockResolvedValue({ deletedCount: 0 });
+    jest.spyOn(AIGeneration, 'exists').mockResolvedValue(true);
+
+    const req = { user: { id: userId }, body: { projectId, prompt: 'Why did you use this approach?', filePath: 'src/app.ts', conversationId: String(conversationId) } };
+    const res = response();
+    await generateAI(req, res, jest.fn());
+
+    expect(Conversation.create).not.toHaveBeenCalled(); // reused the existing conversation, not a new unrelated one
+    expect(find).toHaveBeenCalledWith(expect.objectContaining({ conversationId: { $ne: conversationId } }));
+    expect(res.end).toHaveBeenCalled();
+  });
+});
+
+describe('Task 13 — GET /ai/conversations/:id/messages', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('returns messages in chronological order for a conversation the user owns', async () => {
+    const { getConversationMessages } = require('../dist/controllers/ai.controller');
+    const userId = 'user-a';
+    const conversationId = new mongoose.Types.ObjectId();
+    jest.spyOn(Conversation, 'findOne').mockReturnValue({ lean: async () => ({ _id: conversationId, userId }) });
+    const rows = [{ _id: new mongoose.Types.ObjectId(), role: 'user', content: 'Q1' }, { _id: new mongoose.Types.ObjectId(), role: 'assistant', content: 'A1' }];
+    const sort = jest.fn().mockReturnValue({ limit: () => ({ lean: async () => rows }) });
+    jest.spyOn(Message, 'find').mockReturnValue({ sort });
+
+    const req = { user: { id: userId }, params: { id: String(conversationId) } };
+    const res = { json: jest.fn() };
+    await getConversationMessages(req, res, jest.fn());
+
+    expect(sort).toHaveBeenCalledWith({ createdAt: 1 });
+    expect(res.json).toHaveBeenCalledWith({ data: rows });
+  });
+
+  test('a user cannot fetch another user\'s conversation thread', async () => {
+    const { getConversationMessages } = require('../dist/controllers/ai.controller');
+    jest.spyOn(Conversation, 'findOne').mockReturnValue({ lean: async () => null }); // {_id, userId} filter finds nothing for the wrong user
+    const find = jest.spyOn(Message, 'find');
+
+    const req = { user: { id: 'attacker' }, params: { id: String(new mongoose.Types.ObjectId()) } };
+    const next = jest.fn();
+    await getConversationMessages(req, {}, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: 'Conversation not found' }));
+    expect(find).not.toHaveBeenCalled();
+  });
+});

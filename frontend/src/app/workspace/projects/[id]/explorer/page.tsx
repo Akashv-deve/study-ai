@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { AIPanel } from '../../../../../components/ai/AIPanel';
+import { useConversationThread } from '../../../../../hooks/useConversationThread';
 import { CodeViewer } from '../../../../../components/explorer/CodeViewer';
 import { FileTree } from '../../../../../components/explorer/FileTree';
 import { StatePanel } from '../../../../../components/workspace/StatePanel';
@@ -25,6 +26,7 @@ export default function ExplorerPage() {
   const { id } = useParams<{ id: string }>();
   const { project, error, loading, reload } = useProject(id);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [mobilePanel, setMobilePanel] = useState<'files' | 'code' | 'ai'>('files');
   const [filesState, setFilesState] = useState<FilesState>('idle');
   const [filesError, setFilesError] = useState<string | null>(null);
   const [filesReload, setFilesReload] = useState(0);
@@ -35,6 +37,9 @@ export default function ExplorerPage() {
 
   const { activeFile, content, loading: fileLoading, error: fileError, selectFile, retryLoad } = useFileSelection(id);
   const { state: ai, generate, retry, regenerate, cancel, restore, setFavorite, clear } = useAIGeneration(id);
+  // Task 13: re-fetches once a turn finishes (status/generationId change), so a completed follow-up joins
+  // the visible thread from the persisted Conversation/Message backend rather than only living in memory.
+  const conversationThread = useConversationThread(ai.conversationId, `${ai.status}:${ai.generationId ?? ''}`);
   const busy = isBusy(ai.status);
   const ready = project?.processingStatus === 'ready';
   const contextKey = contextKeyFor(activeFile?.path, activeSelection);
@@ -92,6 +97,7 @@ export default function ExplorerPage() {
   }, [id, ready, filesReload, setStoreFiles]);
 
   const ask = useCallback((prompt: string) => {
+    setMobilePanel('ai');
     const { activeFile: file, activeSelection: selection, ai: current } = live.current;
     // A follow-up may continue a conversation only when it is about the same file/selection as that response.
     const continues = Boolean(current.generationId) && stateContextKey(current) === contextKeyFor(file?.path, selection);
@@ -176,15 +182,25 @@ export default function ExplorerPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <nav aria-label="Breadcrumb" className="h-10 shrink-0 border-b border-[#30363d] px-4 flex items-center gap-2 text-xs bg-[#0d1117]">
-        <Link href="/workspace" className="inline-flex items-center text-zinc-400 hover:text-white transition-colors"><ArrowLeft size={13} className="mr-1.5" />Projects</Link>
-        <span className="text-zinc-600">/</span>
-        <Link href={`/workspace/projects/${id}`} className="text-zinc-400 hover:text-white transition-colors truncate max-w-[16rem]">{project.name}</Link>
-        <span className="text-zinc-600">/</span>
-        <span className="text-zinc-200">Code Explorer</span>
+      <nav aria-label="Breadcrumb" className="h-10 shrink-0 border-b border-[#30363d] px-3 sm:px-4 flex items-center gap-2 text-xs bg-[#0d1117] overflow-x-auto">
+        <Link href="/workspace" className="inline-flex min-h-[44px] lg:min-h-0 items-center text-zinc-400 hover:text-white transition-colors shrink-0"><ArrowLeft size={13} className="mr-1.5" aria-hidden="true" />Projects</Link>
+        <span className="text-zinc-600" aria-hidden="true">/</span>
+        <Link href={`/workspace/projects/${id}`} className="text-zinc-400 hover:text-white transition-colors truncate max-w-[8rem] sm:max-w-[16rem]">{project.name}</Link>
+        <span className="text-zinc-600" aria-hidden="true">/</span>
+        <span className="text-zinc-200 shrink-0">Code Explorer</span>
       </nav>
-      <div className="flex-1 min-h-0 grid grid-cols-[15rem_minmax(0,1fr)_22rem] grid-rows-[minmax(0,1fr)] overflow-hidden">
-        <aside className="border-r border-[#30363d] flex flex-col min-h-0">
+      {/* Below lg: one panel at a time via tabs (a live editor + file tree + AI panel cannot usefully share a
+          360-430px screen at once). lg+: the original three-column layout, unchanged. */}
+      <div role="tablist" aria-label="Explorer panel" className="lg:hidden shrink-0 flex border-b border-[#30363d] bg-[#0d1117]">
+        {([['files', 'Files'], ['code', 'Code'], ['ai', 'AI']] as const).map(([key, label]) => (
+          <button key={key} role="tab" aria-selected={mobilePanel === key} type="button" onClick={() => setMobilePanel(key)}
+            className={`flex-1 min-h-[44px] text-sm font-medium border-b-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${mobilePanel === key ? 'border-blue-500 text-white bg-[#161b22]' : 'border-transparent text-zinc-400'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[15rem_minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)] overflow-hidden">
+        <aside className={`${mobilePanel === 'files' ? 'flex' : 'hidden'} lg:flex border-r border-[#30363d] flex-col min-h-0 flex-1 lg:flex-auto`}>
           {(filesState === 'idle' || filesState === 'loading') && (
             <div role="status" className="flex-1 flex items-center justify-center gap-2 text-xs text-zinc-500"><Spinner size={16} />Loading files…</div>
           )}
@@ -199,13 +215,15 @@ export default function ExplorerPage() {
             <p className="p-4 text-xs text-zinc-500">No files were indexed for this project.</p>
           )}
           {filesState === 'ready' && files.length > 0 && (
-            <div className="flex-1 min-h-0"><FileTree files={files} activePath={activeFile?.path} onSelectFile={selectFile} /></div>
+            <div className="flex-1 min-h-0"><FileTree files={files} activePath={activeFile?.path} onSelectFile={(f) => { selectFile(f); setMobilePanel('code'); }} /></div>
           )}
         </aside>
-        <div className="min-w-0 h-full overflow-hidden">
+        <div className={`${mobilePanel === 'code' ? 'flex' : 'hidden'} lg:block min-w-0 h-full flex-1 lg:flex-auto overflow-hidden`}>
           <CodeViewer file={activeFile} content={content} loading={fileLoading} error={fileError} onRetryLoad={retryLoad} aiBusy={busy} onAskAI={ask} onSelectionChange={setActiveSelection} />
         </div>
-        <AIPanel status={ai.status} content={ai.content} error={ai.error} context={ai} generationId={ai.generationId} isFavorite={ai.isFavorite} actionError={actionError} onGenerate={ask} onRegenerate={onRegenerate} onRetry={onRetry} onCancel={cancel} onDelete={() => void deleteResponse()} onFavorite={() => void favoriteResponse()} />
+        <div className={`${mobilePanel === 'ai' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col min-h-0 flex-1 lg:flex-auto overflow-hidden`}>
+        <AIPanel status={ai.status} content={ai.content} error={ai.error} context={{ ...ai, request: ai.request }} generationId={ai.generationId} isFavorite={ai.isFavorite} actionError={actionError} priorTurns={conversationThread} onGenerate={ask} onRegenerate={onRegenerate} onRetry={onRetry} onCancel={cancel} onDelete={() => void deleteResponse()} onFavorite={() => void favoriteResponse()} />
+        </div>
       </div>
     </div>
   );

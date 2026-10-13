@@ -136,7 +136,7 @@ export default function ProjectOverview() {
   const progress = Math.min(100, Math.max(0, job?.progress ?? 0));
 
   return (
-    <div className="max-w-4xl mx-auto p-8 space-y-6">
+    <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-6">
       <Link href="/workspace" className="inline-flex items-center text-xs text-zinc-400 hover:text-white transition-colors">
         <ArrowLeft size={13} className="mr-1.5" />All projects
       </Link>

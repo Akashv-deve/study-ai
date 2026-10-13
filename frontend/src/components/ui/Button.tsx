@@ -15,7 +15,8 @@ export const Button: React.FC<ButtonProps> = ({
   children,
   ...props
 }) => {
-  const base = 'inline-flex items-center justify-center font-medium transition-colors rounded-md disabled:opacity-50 disabled:pointer-events-none cursor-pointer';
+  // min-h-[44px] on phones = comfortable touch target; desktop keeps the compact size. Visible keyboard focus ring.
+  const base = 'inline-flex items-center justify-center font-medium transition-colors rounded-md disabled:opacity-50 disabled:pointer-events-none cursor-pointer min-h-[44px] sm:min-h-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0d1117]';
   
   const variants = {
     primary: 'bg-blue-600 hover:bg-blue-500 text-white',

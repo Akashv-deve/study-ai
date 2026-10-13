@@ -199,7 +199,7 @@ describe('Issue #23.9-15 — real attempt history', () => {
 describe('Issue #5/#6 — challenge generation validates AI output before saving', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  const baseGenerated = { title: 't', instructions: 'i', referenceSolution: 's', topic: 'x', starterFiles: [], referenceSolutionFiles: [] };
+  const baseGenerated = { title: 't', instructions: 'i', referenceSolution: 's', topic: 'x', starterFiles: [], referenceSolutionFiles: [{ path: 'solution.js', content: 'function f() { return 1; }' }] };
 
   test('rejects a generated challenge with fewer than 3 hints', async () => {
     jest.spyOn(geminiProvider, 'isAvailable').mockReturnValue(true);
@@ -228,6 +228,22 @@ describe('Issue #5/#6 — challenge generation validates AI output before saving
     const saved = await challengeService.generateChallenge({ technology: 'javascript', mode: 'practice', difficulty: 'beginner', userId: 'u1' });
     expect(saved.instructions.length).toBeLessThanOrEqual(4000);
     expect(create).toHaveBeenCalled();
+  });
+
+  test('Task 3: rejects a generated challenge whose "solution" has no code files (prose-only solutions are never saved)', async () => {
+    jest.spyOn(geminiProvider, 'isAvailable').mockReturnValue(true);
+    jest.spyOn(geminiProvider, 'generate').mockResolvedValue(JSON.stringify({ ...baseGenerated, hints: ['a', 'b', 'c'], referenceSolutionFiles: [] }));
+    const create = jest.spyOn(PracticeChallenge, 'create');
+    await expect(challengeService.generateChallenge({ technology: 'javascript', mode: 'practice', difficulty: 'beginner', userId: 'u1' })).rejects.toThrow('solution code files');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test('Task 3: stores the solution code files (server-side only) for later reveal', async () => {
+    jest.spyOn(geminiProvider, 'isAvailable').mockReturnValue(true);
+    jest.spyOn(geminiProvider, 'generate').mockResolvedValue(JSON.stringify({ ...baseGenerated, hints: ['a', 'b', 'c'] }));
+    const create = jest.spyOn(PracticeChallenge, 'create').mockImplementation(async (doc) => doc);
+    await challengeService.generateChallenge({ technology: 'javascript', mode: 'practice', difficulty: 'beginner', userId: 'u1' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ referenceSolutionFiles: [{ path: 'solution.js', content: 'function f() { return 1; }' }] }));
   });
 
   test('rejects malformed (non-JSON) AI output outright', async () => {

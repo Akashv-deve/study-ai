@@ -63,10 +63,10 @@ Respond with ONLY a JSON object, no markdown fences, matching exactly this shape
   "expectedBehavior": "what correct output/behavior looks like",
   "starterFiles": [{"path":"string","content":"string"}],
   "hints": ["hint 1 (gentle nudge)", "hint 2 (more specific)", "hint 3 (nearly the approach)"],
-  "referenceSolution": "the model solution as a short explanation",
+  "referenceSolution": "2-4 sentence plain-language explanation of how the solution works (NOT the code itself)",
   "referenceSolutionFiles": [{"path":"string","content":"string"}]
 }
-Rules: exactly 3 hints, each strictly more revealing than the last but none may contain the full solution. starterFiles must be runnable/non-trivial but must NOT already solve the task. Keep everything scoped to the requested technology/topic/difficulty only.`;
+Rules: exactly 3 hints, each strictly more revealing than the last but none may contain the full solution. starterFiles must be runnable/non-trivial but must NOT already solve the task. referenceSolutionFiles is REQUIRED and must contain the complete, working solution as real code files whose file extensions match the language (e.g. solution.js, App.jsx, styles.css, Main.java, solution.py) — at least one file. Keep everything scoped to the requested technology/topic/difficulty only.`;
 
 function buildGeneratePrompt(params: { technology: string; mode: string; difficulty: string; topic?: string; projectContext?: IProjectPracticeContext }): string {
   const lines = [`Generate a ${params.difficulty} difficulty "${params.mode}" challenge for ${params.technology}.`];
@@ -154,6 +154,14 @@ function validateAndCleanGenerated(parsed: GeneratedChallengeJson): {
   if (hints.length !== parsed.hints.length) throw new ValidationError('The AI generated a malformed hint. Try generating again.');
   if (hints.length !== 3) throw new ValidationError(`The AI must generate exactly 3 hints (got ${hints.length}). Try generating again.`);
 
+  // Task 3: a revealed solution must be shown as real, syntax-highlighted CODE — so a generated challenge
+  // without at least one reference solution file is rejected (regenerate) rather than saved with a
+  // prose-only "solution".
+  const referenceSolutionFiles = cleanFiles(parsed.referenceSolutionFiles, 'reference solution files');
+  if (referenceSolutionFiles.length === 0) {
+    throw new ValidationError('The AI response did not include solution code files. Try generating again.');
+  }
+
   return {
     title: title.slice(0, LIMITS.title),
     description: description.slice(0, LIMITS.description),
@@ -163,7 +171,7 @@ function validateAndCleanGenerated(parsed: GeneratedChallengeJson): {
     starterFiles: cleanFiles(parsed.starterFiles, 'starter files'),
     hints,
     referenceSolution: referenceSolution.slice(0, LIMITS.referenceSolution),
-    referenceSolutionFiles: cleanFiles(parsed.referenceSolutionFiles, 'reference solution files'),
+    referenceSolutionFiles,
   };
 }
 

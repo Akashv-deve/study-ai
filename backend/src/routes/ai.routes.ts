@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { deleteFavorite, deleteGeneration, favoriteGeneration, generateAI, generateProjectOverview, getGeneration, getLatestGeneration, getProjectOverview, listFavorites, regenerateGeneration, unfavoriteGeneration } from '../controllers/ai.controller';
+import { deleteFavorite, deleteGeneration, favoriteGeneration, generateAI, generateProjectOverview, getConversationMessages, getGeneration, getLatestGeneration, getProjectOverview, listFavorites, regenerateGeneration, unfavoriteGeneration } from '../controllers/ai.controller';
 import { aiLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
 router.post('/generate', aiLimiter, generateAI);
 router.get('/projects/:projectId/latest', getLatestGeneration);
+router.get('/conversations/:id/messages', getConversationMessages);
 router.get('/projects/:projectId/overview', getProjectOverview);
 router.post('/projects/:projectId/overview', aiLimiter, generateProjectOverview);
 router.get('/favorites', listFavorites);

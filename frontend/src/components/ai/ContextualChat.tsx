@@ -24,18 +24,20 @@ export const ContextualChat: React.FC<ContextualChatProps> = ({ onSend, isLoadin
         <Sparkles size={13} className="text-blue-400" />
         <span>Ask follow-up question about this result</span>
       </div>
-      <form onSubmit={handleSubmit} className="flex items-center space-x-2">
+      <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        <label htmlFor="ai-followup-input" className="sr-only">Follow-up question</label>
         <input
+          id="ai-followup-input"
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Why did you use this approach? Explain line 10..."
-          className="flex-1 bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+          placeholder="Why did you use this approach?"
+          className="min-w-0 flex-1 min-h-[44px] bg-[#0d1117] border border-[#30363d] rounded-md px-3 py-2 text-sm sm:text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
           disabled={isLoading}
         />
-        <Button size="sm" type="submit" disabled={isLoading || !input.trim()}>
-          <Send size={13} className="mr-1" />
-          Send
+        <Button size="sm" type="submit" disabled={isLoading || !input.trim()} className="shrink-0" aria-label="Send follow-up question">
+          <Send size={13} aria-hidden="true" className="sm:mr-1" />
+          <span className="hidden sm:inline">Send</span>
         </Button>
       </form>
     </div>

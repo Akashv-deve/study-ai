@@ -15,7 +15,7 @@ export default function ProgressPage() {
   if (!progress) return <div className="h-full flex items-center justify-center gap-2 text-sm text-zinc-500"><Spinner size={16} />Loading progress…</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-8 space-y-8">
+    <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-8">
       <h1 className="text-2xl font-bold text-white">Progress</h1>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

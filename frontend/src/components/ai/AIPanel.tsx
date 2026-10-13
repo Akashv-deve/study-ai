@@ -6,15 +6,22 @@ import { MarkdownResponse } from './MarkdownResponse';
 import { Button } from '../ui/Button';
 import { Spinner } from '../ui/Spinner';
 import { GenerationError, GenerationStatus, errorTitle, isBusy } from '../../lib/aiGeneration';
+import { ThreadMessage } from '../../hooks/useConversationThread';
+import { User } from 'lucide-react';
 
 interface AIPanelProps {
   /** The one source of truth for what the generation is doing. */
   status: GenerationStatus;
   content: string;
   error?: GenerationError;
-  context?: { filePath?: string; selection?: { startLine?: number; endLine?: number }; type?: string; modelName?: string; createdAt?: string };
+  context?: { filePath?: string; selection?: { startLine?: number; endLine?: number }; type?: string; modelName?: string; createdAt?: string; request?: { prompt?: string } };
   generationId?: string;
   isFavorite?: boolean;
+  /** Task 13: every earlier turn of this conversation (oldest first), fetched from the existing
+   * Conversation/Message backend — NOT a separate chat store. The entry whose metadata.generationId matches
+   * the CURRENT `generationId` is skipped here and rendered live instead (see the main content block below),
+   * so a streaming turn is never duplicated. */
+  priorTurns?: ThreadMessage[];
   /** Failure of delete / favourite (not of generation). */
   actionError?: string | null;
   onGenerate: (prompt: string) => void;
@@ -40,7 +47,7 @@ function Progress({ status, onCancel }: { status: 'connecting' | 'streaming'; on
   );
 }
 
-export const AIPanel: React.FC<AIPanelProps> = ({ status, content, error, context, generationId, isFavorite, actionError, onGenerate, onRegenerate, onRetry, onCancel, onDelete, onFavorite }) => {
+export const AIPanel: React.FC<AIPanelProps> = ({ status, content, error, context, generationId, isFavorite, actionError, priorTurns = [], onGenerate, onRegenerate, onRetry, onCancel, onDelete, onFavorite }) => {
   const [copied, setCopied] = useState(false); const [full, setFull] = useState(false);
   const busy = isBusy(status);
   const failed = status === 'failed';
@@ -48,10 +55,39 @@ export const AIPanel: React.FC<AIPanelProps> = ({ status, content, error, contex
   const hasContent = content.length > 0;
   const retryable = failed ? error?.retryable !== false : stopped;
   const copy = async () => { await navigator.clipboard.writeText(content); setCopied(true); window.setTimeout(() => setCopied(false), 2000); };
+  // The currently-displayed generation's own messages are excluded from history — they're rendered live below.
+  const historyTurns = priorTurns.filter((m) => m.metadata?.generationId !== generationId);
 
   return <div className={`${full ? 'fixed inset-0 z-50' : 'h-full'} flex flex-col bg-[#0d1117] border-l border-[#30363d] p-4 font-sans overflow-y-auto`}>
     <div className="flex items-center justify-between pb-3 border-b border-[#30363d]"><div className="flex items-center gap-2"><Sparkles size={16} className="text-blue-400" /><h3 className="font-semibold text-sm text-white">Study AI Assistant</h3></div><Button size="sm" variant="ghost" title="Full screen" onClick={() => setFull(!full)}>{full ? <X size={14} /> : <Expand size={14} />}</Button></div>
     <div className="flex-1 my-4 space-y-4">
+      {/* Task 13: the persisted thread — user/assistant turns visually distinguished, original explanation
+          stays on top, follow-ups accumulate below it. Never force-scrolled; the panel is a normal
+          overflow-y-auto container so a person reading older content isn't yanked to the bottom. */}
+      {historyTurns.length > 0 && (
+        <div className="space-y-3">
+          {historyTurns.map((m) => m.role === 'user' ? (
+            <div key={m._id} className="flex items-start gap-2 justify-end">
+              <div className="max-w-[85%] rounded-lg rounded-tr-sm bg-blue-600/20 border border-blue-800/60 px-3 py-2 text-xs text-blue-50 whitespace-pre-wrap break-words">{m.content}</div>
+              <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-blue-600/30 flex items-center justify-center" aria-hidden="true"><User size={12} className="text-blue-200" /></div>
+            </div>
+          ) : (
+            <div key={m._id} className="flex items-start gap-2">
+              <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-[#21262d] flex items-center justify-center" aria-hidden="true"><Sparkles size={12} className="text-blue-400" /></div>
+              <div className="min-w-0 flex-1 max-w-[85%] rounded-lg rounded-tl-sm bg-[#161b22] border border-[#30363d] px-3 py-2"><MarkdownResponse content={m.content} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* The user side of the CURRENT (possibly still streaming) turn — kept visually identical to history bubbles. */}
+      {context?.request?.prompt && (busy || hasContent || failed || stopped) && (
+        <div className="flex items-start gap-2 justify-end">
+          <div className="max-w-[85%] rounded-lg rounded-tr-sm bg-blue-600/20 border border-blue-800/60 px-3 py-2 text-xs text-blue-50 whitespace-pre-wrap break-words">{context.request.prompt}</div>
+          <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-blue-600/30 flex items-center justify-center" aria-hidden="true"><User size={12} className="text-blue-200" /></div>
+        </div>
+      )}
+
       {status === 'connecting' && <Progress status="connecting" onCancel={onCancel} />}
 
       {(failed || stopped) && (
